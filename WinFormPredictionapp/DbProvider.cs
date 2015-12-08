@@ -18,8 +18,7 @@ namespace WinFormPredictionapp
             set { dbName = value; }
         }
        
-      
-
+     
         public SqlProvider(string connectionString, string dbName)
         {
             this.connectionString = connectionString;

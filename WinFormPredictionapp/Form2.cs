@@ -15,14 +15,26 @@ namespace WinFormPredictionapp
 {
     public partial class Form2 : Form
     {
+
+        IDictionary<string, string> dataSet;
+        PlotModel plotModel;
         public Form2()
         {
             InitializeComponent();
-            IDictionary<string, string> dataSet = DataHelper.GetDataFromJson();
 
+            this.dataSet = DataHelper.GetDataFromJson();
+
+            comboBoxDateStart.FormatString = "YYYY-MM-DD";
+            comboBoxDateStart.DataSource = dataSet.Keys.ToList<String>();
+            comboBoxDateStart.DisplayMember = "Начальная дата";
+
+
+            comboBoxDateEnd.FormatString = "YYYY-MM-DD";
+            comboBoxDateEnd.DataSource = dataSet.Keys.ToList<String>();
+            comboBoxDateEnd.DisplayMember = "Конечная дата";
 
             #region Создание бд и наполнение данными
-            SqlProvider sqlProv = new SqlProvider(QueryCommands.SQLConnectionString, "CurrencyDb");
+         //   SqlProvider sqlProv = new SqlProvider(QueryCommands.SQLConnectionString, "CurrencyDb");
             //  sqlProv.CreateDB();
             // sqlProv.CreateTable("Currency");
             //    sqlProv.ExecuteQuery(DataHelper.GenerateInsertScriptForDataSet(dataSet, "Currency", sqlProv.DBName));
@@ -32,7 +44,9 @@ namespace WinFormPredictionapp
             // sqlProv.CreateTable("CurrencyForPrediction");
             //sqlProv.ExecuteQuery(DataHelper.GenerateInsertScriptForDataSet(dataSet, "CurrencyForPrediction", sqlProv.DBName, 50));
             #endregion
+
             #region drawCode
+
             this.Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath);
 
 
@@ -40,72 +54,23 @@ namespace WinFormPredictionapp
             //Период - сколько пред. знач учитываем при высчите нового
             //Holdout - количество чисел с конца из сущест. датасета, у которых берется VALUE для прогноза последующих точек, а не forecast-value
             
-            var result = TimeSeries.simpleMovingAverage(CreateDecimalArrayFromDictionary(dataSet), 150, 100, dataSet.Count );
+     //       var result = TimeSeries.simpleMovingAverage(DataHelper.CreateDecimalArrayFromDictionary(dataSet), 150, 100, dataSet.Count );
+        
+       //     var secondList = DataHelper.CreateListDataPointFromForecastTable(result, dataSet, dataSet.Keys.Count-1000);
 
-            var secondList = CreateListDataPointFromForecastTable(result, dataSet, dataSet.Keys.Count-1000);
-            CreatePlot(CreateListDataPointFromDictionary(dataSet), secondList);
+            InitPlotModel();
+
+
+         
             #endregion
 
         }
-        private List<DataPoint> CreateListDataPointFromDictionary(IDictionary<string, string> dict)
+
+
+
+        private void InitPlotModel()
         {
-            List<DataPoint> resultList = new List<DataPoint>();
-
-            foreach (var item in dict)
-            {
-                DateTime dt;
-                if (!DateTime.TryParse(item.Key, out dt))
-                    throw new ArgumentException("Плохое время");
-                resultList.Add(new DataPoint(DateTimeAxis.ToDouble(dt), Convert.ToDouble(item.Value)));
-            }
-
-            return resultList;
-        }
-
-
-        private decimal[] CreateDecimalArrayFromDictionary(IDictionary<string,string> dict)
-        {
-            return dict.Values.Select(n => Convert.ToDecimal(n)).ToArray<decimal>();
-        }
-
-        private List<DataPoint> CreateListDataPointFromForecastTable(ForecastTable ft, IDictionary<string,string> originalDataSet, int startPredictValue)
-        {
-            List<DataPoint> resultList = new List<DataPoint>();
-
-            int i = 0;
-            foreach(var item in originalDataSet)
-            {
-                DateTime dt;
-                if (!DateTime.TryParse(item.Key, out dt))
-                    throw new ArgumentException("Плохое время");
-                resultList.Add(new DataPoint(DateTimeAxis.ToDouble(dt), Convert.ToDouble(item.Value)));
-                if (++i == startPredictValue)
-                    break;
-                
-            }
-
-            //теперь берем дату из словаря, а значение из прогноза
-            for(;i<originalDataSet.Keys.Count; ++i)
-            {
-                DateTime dt;
-                if (!DateTime.TryParse(originalDataSet.Keys.ElementAt<string>(i), out dt))
-                    throw new ArgumentException("Плохое время");
-                resultList.Add(new DataPoint(DateTimeAxis.ToDouble(dt), Convert.ToDouble(ft.Rows[i][1])));
-            }
-            //Новые значения
-            for(i=originalDataSet.Keys.Count; i<ft.Rows.Count; ++i)
-            {
-                resultList.Add(new DataPoint(resultList.Last().X + 1, Convert.ToDouble(ft.Rows[i][2])));
-                
-            }
-
-            return  resultList;
-        }
-
-
-        private void CreatePlot(List<DataPoint> pointList, List<DataPoint> predictionList)
-        {
-            var pm = new PlotModel
+            plotModel = new PlotModel
             {
                 Title = "EUR/USD",
                 PlotType = PlotType.Cartesian,
@@ -118,32 +83,53 @@ namespace WinFormPredictionapp
             yAxis.AbsoluteMinimum = 0.5;
             yAxis.AbsoluteMaximum = 2;
 
-            pm.Axes.Add(xAxis);
-            pm.Axes.Add(yAxis);
+            plotModel.Axes.Add(xAxis);
+            plotModel.Axes.Add(yAxis);
 
-            var s2 = new LineSeries();
-            foreach (var point in predictionList)
-                s2.Points.Add(point);
+            this.plot1.Model = plotModel;
 
+        }
 
-            s2.Color = OxyColor.Parse("#0000FF");
-
-            pm.Series.Add(s2);
-
+        private void AddSeries(List<DataPoint> pointList)
+        {
+            var plotView = this.Controls.Find("plot1", false).Cast<OxyPlot.WindowsForms.PlotView>().FirstOrDefault();
             var s1 = new LineSeries();
             s1.Color = OxyColor.Parse("#FF0000");
             foreach (var point in pointList)
                 s1.Points.Add(point);
-            pm.Series.Add(s1);
+
+            plotModel.Series.Add(s1);
+            plotView.Model = plotModel;
+
+            plotView.Model.InvalidatePlot(true);
+            plotView.InvalidatePlot(true);
 
 
-            plot1.Model = pm;
         }
 
-        private void label1_Click(object sender, EventArgs e)
+        private void comboBox1_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            
+        }
+
+        private void button1_Click(object sender, EventArgs e)
+        {
+            //Отрисовываем график основной
+            AddSeries(DataHelper.CreateListDataPointFromDictionary(dataSet));
+            
+
+            //  this.plot1.Refresh();
+
+
+
+        }
+
+        private void checkBox1_CheckedChanged(object sender, EventArgs e)
         {
 
         }
+
+
 
         /*
         private void CreatePlot(List<SortedList<int,DataPoint>> listList)
